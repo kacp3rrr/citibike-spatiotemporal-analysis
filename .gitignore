@@ -1,0 +1,18 @@
+# ignore only citibike raw data - too large
+data/raw/citibike/*
+!data/raw/citibike/.gitkeep
+
+# ignore processed files
+data/processed/*
+
+# virtual environment
+venv/
+
+# jupyter artifacts
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# system files
+.DS_Store
+__pycache__/
+*.pyc
