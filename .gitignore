@@ -4,6 +4,7 @@ data/raw/citibike/*
 
 # ignore processed files
 data/processed/*
+!data/raw/citibike/.gitkeep
 
 # virtual environment
 venv/
