@@ -43,4 +43,4 @@ Once CitiBike data is downloaded, run the notebooks in order starting from `01_p
 - Dataset: Local Climatological Data (LCD)
 - Station: NY CITY CENTRAL PARK, NY US (WBAN: 94728)
 - Select date range, format CSV, submit. The dataset will be delivered by email within ~10 minutes
--Replace file in `data/raw/weather` and update filename in **1.3** of the setup notebook
+- Replace file in `data/raw/weather` and update filename in **1.3** of the setup notebook
