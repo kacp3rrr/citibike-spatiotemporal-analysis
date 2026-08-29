@@ -1,0 +1,51 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "CitiBike Spatiotemporal Ridership Analysis"
+  description: "Analyzing and predicting NYC CitiBike ridership patterns across April-June 2024"
+  sidebar:
+    style: "docked"
+    search: true
+    background: transparent
+    contents:
+      - text: "Overview"
+        href: index.qmd
+      - text: "Pipeline & Setup"
+        href: notebooks/01_setup.ipynb
+      - text: "Exploratory Data Analysis"
+        href: notebooks/02_eda.ipynb
+      - text: "Predictive Modeling"
+        href: notebooks/03_modeling.ipynb
+      - text: "Geospatial Maps"
+        href: notebooks/04_maps.ipynb
+    tools:
+      - icon: github
+        href: https://github.com/kacp3rrr/citibike-spatiotemporal-analysis
+        text: "Source on GitHub"
+  page-footer:
+    border: true
+    left:
+      - icon: github
+        href: https://github.com/kacp3rrr/citibike-spatiotemporal-analysis
+      - text: "NYC CitiBike · April – June 2024"
+
+format:
+  html:
+    page-layout: full
+    theme:
+      dark:
+        - darkly
+        - styles-dark.scss
+      light:
+        - flatly
+        - styles.scss
+    code-fold: true
+    code-tools: true
+    code-copy: true
+    toc: true
+    toc-depth: 3
+    toc-title: "On this page"
+    link-external-newwindow: true
+    fig-align: center

@@ -9,6 +9,11 @@ This project aggregates ~5 million individual trips into hourly station-level co
   <img src="figures/maps/station_flow_imbalance.png" width="29.90%"/>
 </div>
 
+### Data Sources
+- [CitiBike System Ridership Data](https://s3.amazonaws.com/tripdata/index.html)
+- [NOAA Local Climatological Data](https://ncei.noaa.gov/cdo-web/)
+- [NYC Open Data](https://data.cityofnewyork.us)
+
 ## Setup
 
 ### Prerequisites

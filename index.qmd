@@ -1,0 +1,48 @@
+---
+title: "CitiBike Spatiotemporal Ridership Analysis"
+subtitle: "NYC | April - June 2024"
+---
+
+## Project Overview
+
+[GitHub Repository ⇒](https://github.com/kacp3rrr/citibike-spatiotemporal-analysis)
+
+Analysis and prediction of NYC CitiBike ridership patterns using historical trip data, weather observations, and geospatial neighborhood data across April-June 2024
+
+This project aggregates ~5 million individual trips into hourly station-level counts, merged with weather and spatial data. This dataset is then analyzed and used to build predictive models to understand what drives ridership demand.
+
+<div align="center">
+  <img src="figures/model/spatial_residuals.png" width="90%"/>
+</div>
+
+## Navigation
+
+Use the navbar above to explore each phase of the analysis:
+
+- **Pipeline**: data loading, aggregation, spatial joins, weather merge
+- **EDA**: temporal, geographic, weather, and behavioral patterns  
+- **Modeling**: feature engineering, model comparison, spatial residuals
+- **Maps**: choropleth, bubble map, flow imbalance
+
+## Key Findings
+
+| Finding | Value |
+|---|---|
+| Rain ridership reduction | 16.5% |
+| Rush hour multiplier | 1.40x |
+| Electric bike share | 65% |
+| Best model R² | 0.192 |
+| Baseline RMSE improvement | 10.35% |
+| Pier 61 flow imbalance | 6x network average |
+
+## Dataset
+
+- ~5 million CitiBike trips aggregated to 1.9M hourly station observations
+- 2,289 active stations across NYC
+- Merged with NOAA hourly weather and NYC geospatial neighborhood data
+
+## Data Sources
+
+- [CitiBike System Data](https://citibikenyc.com/system-data)
+- [NOAA Local Climatological Data](https://ncei.noaa.gov/cdo-web/)
+- [NYC Open Data](https://opendata.cityofnewyork.us/)

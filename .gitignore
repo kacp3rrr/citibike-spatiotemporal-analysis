@@ -1,10 +1,10 @@
-# ignore only citibike raw data - too large
+# ignore only citibike raw data
 data/raw/citibike/*
 !data/raw/citibike/.gitkeep
 
 # ignore processed files
 data/processed/*
-!data/raw/citibike/.gitkeep
+!data/processed/.gitkeep
 
 # virtual environment
 venv/
@@ -13,7 +13,18 @@ venv/
 .ipynb_checkpoints/
 **/.ipynb_checkpoints/
 
+# quarto
+_site/
+.quarto/
+/.quarto/
+**/*.quarto_ipynb
+
 # system files
 .DS_Store
 __pycache__/
 *.pyc
+
+# FOR STREAMLIT DEPLOYMENT:
+# generated dashboard artifacts, force added on dashboard deploy branch
+# dashboard/data/
+# dashboard/model_artifacts/
