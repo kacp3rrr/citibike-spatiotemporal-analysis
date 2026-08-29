@@ -1,6 +1,6 @@
 ---
 title: "CitiBike Spatiotemporal Ridership Analysis"
-subtitle: "NYC | April - June 2024"
+subtitle: "NYC, April - June 2024"
 ---
 
 ## Project Overview
