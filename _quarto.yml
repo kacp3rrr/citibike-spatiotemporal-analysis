@@ -31,6 +31,9 @@ website:
         href: https://github.com/kacp3rrr/citibike-spatiotemporal-analysis
       - text: "NYC CitiBike · April – June 2024"
 
+execute:
+  freeze: true
+
 format:
   html:
     page-layout: full
