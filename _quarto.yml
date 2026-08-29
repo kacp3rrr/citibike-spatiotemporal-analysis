@@ -33,6 +33,7 @@ website:
 
 execute:
   freeze: true
+  execute-dir: project
 
 format:
   html:
