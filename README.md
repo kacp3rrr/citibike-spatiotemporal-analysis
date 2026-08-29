@@ -4,6 +4,11 @@ Analysis and prediction of NYC CitiBike ridership patterns using historical trip
 
 This project aggregates ~5 million individual trips into hourly station-level counts, merged with weather and spatial data. This dataset is then analyzed and used to build predictive models to understand what drives ridership demand.
 
+<div align="center">
+  <img src="figures/model/spatial_residuals.png" width="60%"/>
+  <img src="figures/maps/station_flow_imbalance.png" width="29.90%"/>
+</div>
+
 ## Setup
 
 ### Prerequisites
