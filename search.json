@@ -1,0 +1,487 @@
+[
+  {
+    "objectID": "notebooks/04_maps.html",
+    "href": "notebooks/04_maps.html",
+    "title": "4: Maps",
+    "section": "",
+    "text": "Produce neighborhood and station-level maps that spatially contextualize the EDA and modeling findings. All maps use the same NTA boundary shapefile as the spatial join in the pipeline\nCode\nimport pandas as pd\nimport numpy as np\nimport matplotlib.pyplot as plt\nimport geopandas as gpd\nimport matplotlib.colors as mcolors\nfrom matplotlib.lines import Line2D",
+    "crumbs": [
+      "Geospatial Maps"
+    ]
+  },
+  {
+    "objectID": "notebooks/04_maps.html#setup",
+    "href": "notebooks/04_maps.html#setup",
+    "title": "4: Maps",
+    "section": "4.1: Setup",
+    "text": "4.1: Setup\nLoad data, aggregate station statistics and geospatial data\n\n\nCode\n# load processed data, nta shapefile\n# dtype forced on start_station_id: hourly_merged.csv is large enough that pandas\n# infers types per chunk, parsing some ids as float and others as str. That silently\n# breaks the station_stats merge below, dropping those stations from every map.\ndf_model = pd.read_csv('../data/processed/hourly_merged.csv', parse_dates=['start_hour'],\n                    dtype={'start_station_id': str})\nstation_lookup = pd.read_csv('../data/processed/station_lookup.csv',\n                    dtype={'start_station_id': str})\nnta = gpd.read_file('../data/raw/spatial/nta.shp').to_crs('EPSG:4326')\n\n# aggregate station stats, build station geodataframe\nstation_stats = (df_model.groupby('start_station_id')\n                .agg(avg_ride_count=('ride_count', 'mean'),\n                        total_departures=('ride_count', 'sum'),\n                        total_arrivals=('arrivals', 'sum'),\n                        total_traffic=('total_traffic', 'sum'))\n                    .reset_index())\n\nstations_geo = gpd.GeoDataFrame(\n    station_lookup.merge(station_stats, on='start_station_id', how='left'),\n    geometry=gpd.points_from_xy(station_lookup['start_lng'], station_lookup['start_lat']),\n    crs='EPSG:4326')\n\n# build nta ridership for choropleth\nnta_stats = (df_model.groupby('ntaname')\n            .agg(total_traffic=('total_traffic', 'sum'),\n                avg_ride_count=('ride_count', 'mean'),\n                total_departures=('ride_count', 'sum'))\n            .reset_index())\n\nnta_geo = nta.merge(nta_stats, on='ntaname', how='left')\n\nCOLORS = {\n    'primary': '#2563EB',\n    'secondary': '#F59E0B', \n    'accent': '#10B981',\n    'muted': '#94A3B8'\n}",
+    "crumbs": [
+      "Geospatial Maps"
+    ]
+  },
+  {
+    "objectID": "notebooks/04_maps.html#choropleth-of-total-traffic-by-neighborhood",
+    "href": "notebooks/04_maps.html#choropleth-of-total-traffic-by-neighborhood",
+    "title": "4: Maps",
+    "section": "4.2: Choropleth of Total Traffic by Neighborhood",
+    "text": "4.2: Choropleth of Total Traffic by Neighborhood\nVisualize the geographic concentration of ridership demand (departures + arrivals). Chelsea/Hudson Yards, Midtown-Times Square dominate, with an outward fading gradient from Manhattan’s core. Dark neighborhoods have no CitiBike stations\n\n\nCode\nfig, ax = plt.subplots(figsize=(12, 14))\n\nnta_geo.plot(\n    ax=ax,\n    column='total_traffic',\n    cmap='YlOrRd',\n    legend=True,\n    legend_kwds={'label': 'Total Traffic (Departures + Arrivals)',\n                    'shrink': 0.6,\n                    'format': '%.0f'},\n    missing_kwds={'color': '#1a1a2e'},\n    edgecolor='#333333',\n    linewidth=0.3\n)\n\nax.set_title('CitiBike Total Traffic by Neighborhood\\nApril - June 2024', fontsize=14, pad=15)\nax.set_xlim(-74.08, -73.84)\nax.set_ylim(40.60, 40.92)\nax.set_xlabel('Longitude')\nax.set_ylabel('Latitude')\nax.tick_params(labelsize=8)\n\nplt.tight_layout()\nplt.savefig('../figures/maps/choropleth_total_traffic.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Geospatial Maps"
+    ]
+  },
+  {
+    "objectID": "notebooks/04_maps.html#station-bubble-map",
+    "href": "notebooks/04_maps.html#station-bubble-map",
+    "title": "4: Maps",
+    "section": "4.3: Station Bubble Map",
+    "text": "4.3: Station Bubble Map\nVisualize station-level traffic volume, where dot size and color both encode total traffic. Provides finer geographic granularity than choropleth, but confirms the same concentration patterns.\n\n\nCode\nfig, ax = plt.subplots(figsize=(12, 14))\n\nnta.plot(ax=ax, color='#1a1a2e', edgecolor=\"#646473\", linewidth=0.3)\n\nscatter = ax.scatter(\n    stations_geo['start_lng'],\n    stations_geo['start_lat'],\n    c=stations_geo['total_traffic'],\n    cmap='YlOrRd',\n    s=stations_geo['total_traffic'] / stations_geo['total_traffic'].max() * 150 + 5,\n    alpha=0.75,\n    edgecolors='none'\n)\n\nplt.colorbar(scatter, ax=ax, label='Total Traffic (Departures + Arrivals)', shrink=0.6, format='%.0f')\nax.set_title('CitiBike Station Traffic Volume\\nApril - June 2024\\n(dot size and color = total traffic)',\n        fontsize=14, pad=15)\n\nax.set_xlim(-74.08, -73.84)\nax.set_ylim(40.60, 40.92)\nax.set_xlabel('Longitude')\nax.set_ylabel('Latitude')\nax.tick_params(labelsize=8)\n\nplt.tight_layout()\nplt.savefig('../figures/maps/station_bubble_map.png', bbox_inches='tight')",
+    "crumbs": [
+      "Geospatial Maps"
+    ]
+  },
+  {
+    "objectID": "notebooks/04_maps.html#station-flow-imbalance",
+    "href": "notebooks/04_maps.html#station-flow-imbalance",
+    "title": "4: Maps",
+    "section": "4.4: Station Flow Imbalance",
+    "text": "4.4: Station Flow Imbalance\nOne of the bigger issues CitiBike faces is the imbalance of bikes at stations. Stations are usually ones where few people depart from but many dock bikes, or ones where few people arrive but many take bikes from. Visualized by map showing the station flow imbalance, geographically mapping which stations see significantly more arrivals than departures, and vice versa. Puts into context how the issue of rebalancing cannot be addressed locally, as entire corridors share the same imbalance direction. City-scale redistribution is required to address the imbalance at a larger scale.\n\n\nCode\nstations_geo['net_flow'] = (stations_geo['total_departures'] - stations_geo['total_arrivals'])\n\nfig, ax = plt.subplots(figsize=(12, 14))\nnta.plot(ax=ax, color=\"#5d5d5d\", edgecolor=\"#000000\", linewidth=0.5)\n\n# diverging colormap centered at 0\ndivnorm = mcolors.TwoSlopeNorm(\n    vmin=-750,\n    vcenter=0,\n    vmax=750\n)\n\n# plot configuration\nscatter = ax.scatter(\n    stations_geo['start_lng'],\n    stations_geo['start_lat'],\n    c=stations_geo['net_flow'],\n    cmap='RdBu_r',\n    norm=divnorm,\n    s=20,\n    alpha=0.9,\n    edgecolors='white',\n    linewidths=0.3\n)\n\n# annotate top 3 net arrival and departure stations\ntop_arrivals = stations_geo.nsmallest(3, 'net_flow').reset_index()\ntop_departures = stations_geo.nlargest(3, 'net_flow').reset_index()\n\n# annotate top arrival stations (blue labels)\nfor i, row in top_arrivals.iterrows():\n    ax.annotate(f'A{i+1}',\n            xy=(row['start_lng'], row['start_lat']),\n            fontsize=8, color='lightblue', fontweight='bold',\n            ha='center', va='center',\n            bbox=dict(boxstyle='round,pad=0.2', \n                    facecolor='#1a1a1a', \n                    alpha=0.8,\n                    edgecolor='lightblue',\n                    linewidth=0.8))\n\nfor i, row in top_departures.iterrows():\n    ax.annotate(f'D{i+1}',\n            xy=(row['start_lng'], row['start_lat']),\n            fontsize=8, color='#ff9999', fontweight='bold',\n            ha='center', va='center',\n            bbox=dict(boxstyle='round,pad=0.2',\n                    facecolor='#1a1a1a',\n                    alpha=0.8,\n                    edgecolor='#ff9999',\n                    linewidth=0.8))\n\nlegend_text = 'A1-A3: Top net arrival stations\\nD1-D3: Top net departure stations'\nax.text(0.02, 0.02, legend_text,\n    transform=ax.transAxes,\n    fontsize=8, color='white',\n    bbox=dict(boxstyle='round', facecolor='#333333', alpha=0.8))\n\n# plot display\nplt.colorbar(scatter, ax=ax, label='Net Station Flow (Departures - Arrivals)', shrink=0.6)\nlegend_elements = [\n    Line2D([0], [0], marker='o', color='w', markerfacecolor=\"#3986d2\", markersize=8, label='Net arrivals (accumulation)'),\n    Line2D([0], [0], marker='o', color='w', markerfacecolor='#d6604d', markersize=8, label='Net departures (drain)')\n]\nax.legend(handles=legend_elements, loc='lower right', fontsize=9, facecolor='#1a1a2e', labelcolor='white')\nax.set_title('CitiBike Station Flow Imbalance\\nApril - June 2024\\n(blue = net arrivals, red = net departures)',\n            fontsize=14, pad=15)\nax.set_xlim(-74.08, -73.84)\nax.set_ylim(40.60, 40.92)\nax.set_xlabel('Longitude')\nax.set_ylabel('Latitude')\nax.tick_params(labelsize=8)\n\nplt.tight_layout()\nplt.savefig('../figures/maps/station_flow_imbalance.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Geospatial Maps"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html",
+    "href": "notebooks/02_eda.html",
+    "title": "2: Exploratory Data Analysis",
+    "section": "",
+    "text": "Explore the processed dataset, understand ridership patterns across temporal, geographic, weather, and behavioral dimensions. Each visualization gives insight to a specific inquiry about what drives Citibike demand\nCode\nimport pandas as pd\nimport numpy as np\nimport geopandas as gpd\nimport matplotlib.pyplot as plt\nimport matplotlib.dates as mdates\nimport seaborn as sns",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#setup",
+    "href": "notebooks/02_eda.html#setup",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.1: Setup",
+    "text": "2.1: Setup\nLoad processed data, and set up plot styling, other prerequisites\n\n\nCode\n# load processed data\n# dtype forced on start_station_id: these files are large enough that pandas infers\n# types per chunk, parsing some ids as float and others as str. That silently breaks\n# every merge against station_lookup and drops the unmatched rows.\ndf_model = pd.read_csv('../data/processed/hourly_merged.csv', parse_dates=['start_hour'],\n                    dtype={'start_station_id': str})\ndf = pd.read_csv('../data/processed/hourly_by_rideable_type.csv', parse_dates=['start_hour'],\n                    dtype={'start_station_id': str})\nstation_lookup = pd.read_csv('../data/processed/station_lookup.csv',\n                    dtype={'start_station_id': str})\ndf['hour_of_day'] = df['start_hour'].dt.hour # done ahead of time for rideable type analysis\n\n# spatial-based data setup\nstation_stats = (df_model.groupby('start_station_id')\n                .agg(avg_ride_count=('ride_count', 'mean'),\n                    total_traffic=('total_traffic', 'sum'))\n                .reset_index())\n\nstations_geo = gpd.GeoDataFrame(\n    station_lookup.merge(station_stats, on='start_station_id', how='left'),\n    geometry=gpd.points_from_xy(station_lookup['start_lng'], station_lookup['start_lat']),\n    crs='EPSG:4326')\n\nnta = gpd.read_file('../data/raw/spatial/nta.shp')\n\n# plot styling\nplt.rcParams['figure.dpi'] = 120\nplt.rcParams['font.size'] = 11\nplt.rcParams['axes.spines.top'] = False\nplt.rcParams['axes.spines.right'] = False\n\nCOLORS = {\n    'primary': '#2563EB',\n    'secondary': '#F59E0B', \n    'accent': '#10B981',\n    'muted': '#94A3B8'\n}",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#daily-ridership",
+    "href": "notebooks/02_eda.html#daily-ridership",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.2: Daily Ridership",
+    "text": "2.2: Daily Ridership\nTotal daily departures across the full 3-month period. Shows overall trend in ridership and day-to-day variance. The point of interest observed here is the flattening out of ridership in June. The two lowest days in April correspond to a cold and rainy weather outlier event, that will be seen down the line in the weather analysis\n\n\nCode\n# initialize dataframe for daily ridership\ndaily = (df_model.groupby(df_model['start_hour'].dt.date)['ride_count']\n        .sum()\n        .reset_index())\ndaily.columns = ['date', 'total_rides']\ndaily['date'] = pd.to_datetime(daily['date'])\n\n# initialize plot\nfig, ax = plt.subplots(figsize=(14, 4))\nax.plot(daily['date'], daily['total_rides'], color=COLORS['primary'], linewidth=1.5, alpha=0.9)\nax.fill_between(daily['date'], daily['total_rides'], alpha=0.1, color=COLORS['primary'])\n\n# label month boundaries\nfor month_start in ['2024-05-01', '2024-06-01']:\n    ax.axvline(pd.Timestamp(month_start), color=COLORS['muted'], linestyle='--', alpha=0.5)\n    ax.text(pd.Timestamp(month_start), ax.get_ylim()[1]*0.95, pd.Timestamp(month_start).strftime('%B'), \n            ha='left', fontsize=9, color=COLORS['muted'])\n\n# plot configuration and display\nax.set_title('Daily CitiBike Departures - April-June 2024', fontsize=13, pad=12)\nax.set_xlabel('Date')\nax.set_ylabel('Total Rides')\nax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))\n\nplt.xticks(rotation=45)\nplt.tight_layout()\nplt.savefig('../figures/eda/daily_ridership_timeseries.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#hourly-ridership",
+    "href": "notebooks/02_eda.html#hourly-ridership",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.3: Hourly Ridership",
+    "text": "2.3: Hourly Ridership\nAverage hourly departures per station split by weekday and weekend. The weekday double hump reflects commuter behavior during rush hour (morning and afternoon window denoted by a light gray box). The weekday single midday peak likely reflects more leisurely riding, compared to the work commutes driving the double humps on weekdays.\n\n\nCode\n# initialize dataframe for hourly ridership, separating weekday vs weekend ridership\nhourly_weekday = (df_model[df_model['is_weekend'] == 0].groupby('hour_of_day')['ride_count'].mean())\nhourly_weekend = (df_model[df_model['is_weekend'] == 1].groupby('hour_of_day')['ride_count'].mean())\n\n# initialize plot\nfig, ax = plt.subplots(figsize=(14, 4))\nax.plot(hourly_weekday.index, hourly_weekday.values, color=COLORS['primary'], \n    linewidth=2.5, label=\"Weekday\", marker=\"o\", markersize=4)\nax.plot(hourly_weekend.index, hourly_weekend.values, color=COLORS['secondary'], \n    linewidth=2.5, label=\"Weekend\", marker=\"o\", markersize=4)\n\n# visually indicate rush hour windows (7-9 AM, 4-7 PM)\nax.axvspan(7, 9, alpha=0.08, color=COLORS['primary'], label='Rush hour window')\nax.axvspan(16, 19, alpha=0.08, color=COLORS['primary'])\n\n# plot configuration and display\nax.set_title('Average Hourly Ridership Per Station: Weekday vs Weekend', fontsize=13, pad=12)\nax.set_xlabel('Hour of Day')\nax.set_ylabel('Average Ride Count per Station')\nax.set_xticks(range(0, 24))\nax.legend()\nplt.tight_layout()\nplt.savefig('../figures/eda/hourly_weekday_vs_weekend.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#ridership-by-day-of-week",
+    "href": "notebooks/02_eda.html#ridership-by-day-of-week",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.4: Ridership by Day of Week",
+    "text": "2.4: Ridership by Day of Week\nAverage departures per station by day. Weekdays consistently outperform weekend, with Tuesday as the highest day and Sunday the lowest, although the gap between weekday and weekends is modest, again likely reflecting a period of leisurely riding to offset the loss in commuter-based riding\n\n\nCode\n# initialize dataframe for week-based ridership\ndow_avg = df_model.groupby('day_of_week')['ride_count'].mean()\nday_labels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']\n\n# initialize plot\ncolors = [COLORS['secondary'] if i &gt;= 5 else COLORS['primary'] for i in range(7)]\nfig, ax = plt.subplots(figsize=(10, 5))\nbars = ax.bar(day_labels, dow_avg.values, color=colors, edgecolor='white', linewidth=0.5)\nax.axhline(dow_avg.mean(), color=COLORS['muted'], linestyle='--', alpha=0.7, label=f\"Overall mean: {dow_avg.mean():.2f}\")\n\n# plot configuration and display\nax.set_title('Average Ridership per Station by Day of Week', fontsize=13, pad=12)\nax.set_ylabel('Average Ride Count per Station')\nax.set_ylim(2.5, 3.4)\nax.legend()\nplt.xticks(rotation=15)\nplt.tight_layout()\nplt.savefig('../figures/eda/ridership_by_day_of_week.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#ridership-by-borough",
+    "href": "notebooks/02_eda.html#ridership-by-borough",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.5: Ridership by Borough",
+    "text": "2.5: Ridership by Borough\nTotal CitiBike traffic (departures + arrivals) aggregated by borough. Manhattan dominates by a wide margin, roughly 3x as much as distant-second Brooklyn. This concentration represents a trend apparent throughout the rest of this project, as network density and higher per-station demand increase ridership counts in Manhattan’s core\n\n\nCode\n# initialize dataframe\nboro_total = (df_model.groupby('boroname')['total_traffic']\n            .sum()\n            .sort_values(ascending=True))\n\n# initialize plot, add corresponding value labels on bars\nfig, ax = plt.subplots(figsize=(9, 4))\nbars = ax.barh(boro_total.index, boro_total.values, color=COLORS['primary'], edgecolor='white')\n\nfor bar, val in zip(bars, boro_total.values):\n    ax.text(bar.get_width() * 1.01, bar.get_y() + bar.get_height()/2, f\"{val:,.0f}\", va=\"center\", fontsize=9)\n\n# plot configuration and display\nax.set_title('Total CitiBike Traffic by Borough (Departures and Arrivals) — April-June 2024', fontsize=13, pad=12)\nax.set_xlabel('Total Rides (Millions)')\nax.xaxis.set_major_formatter(\n    plt.FuncFormatter(lambda x, p: f\"{x/1e6:.1f}M\")\n) # scale values down to reflect x axis scale\nplt.tight_layout()\nplt.savefig('../figures/eda/ridership_by_borough.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#top-neighborhoods-by-ridership",
+    "href": "notebooks/02_eda.html#top-neighborhoods-by-ridership",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.6: Top Neighborhoods by Ridership",
+    "text": "2.6: Top Neighborhoods by Ridership\nNeighborhood-level traffic breakdown showing where demand is actually concentrated. As will be shown later through maps, Chelsea-Hudson Yards leads all neighborhoods. 14 of the top 15 are in Manhattan, with Williamsburg being the only entry outside of Manhattan. A preview to the choropleth map down the line\n\n\nCode\n# initialize dataframe\nnta_total = (df_model.groupby('ntaname')['total_traffic']\n            .sum()\n            .sort_values(ascending=True)\n            .tail(15))\n\n# initialize, configure and display plot\nfig, ax = plt.subplots(figsize=(10, 7))\nax.barh(nta_total.index, nta_total.values, color=COLORS['primary'], edgecolor='white')\nax.set_title('Top 15 Neighborhoods by Total CitiBike Departures', fontsize=13)\nax.set_xlabel('Total Rides')\nax.xaxis.set_major_formatter(\n    plt.FuncFormatter(lambda x, p: f\"{x/1e4}K\")\n) # scale values down to reflect x axis scale\n\nplt.tight_layout()\nplt.savefig('../figures/eda/top_neighborhoods_ridership.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#weather-relationships",
+    "href": "notebooks/02_eda.html#weather-relationships",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.7: Weather Relationships",
+    "text": "2.7: Weather Relationships\nWeather analysis conducted at the daily aggregate level, where effects are most visible.\n\nLeft: temperature vs ridership colored by dry/rainy day status.\nCenter: precipitation scatter with negative regression line\nRight: dry vs rainy day distribution showing a reduction in mean ridership on rainy days.\n\nWeather effects are substantially weaker at the hourly station level. Weather influences the decision to ride at all more than which station or hour riders choose within a riding day\n\n\nCode\n# initialize dataframe, aggregate for weather on a given day\ndaily_weather = (df_model.groupby(df_model['start_hour'].dt.date)\n                .agg(total_rides=('ride_count', 'sum'),\n                    avg_temp=('HourlyDryBulbTemperature', 'mean'),\n                    avg_precip=('HourlyPrecipitation', 'mean'))\n                .reset_index())\ndaily_weather['date'] = pd.to_datetime(daily_weather['start_hour'])\ndaily_weather['is_rainy'] = (daily_weather['avg_precip'] &gt; 0.0005).astype(int)\n\nfig, ax = plt.subplots(1, 3, figsize=(16, 5))\n\n# temperature vs ridership\n# assign proper labels and colors to rainy vs non-rainy data \nfor is_rainy, color, label in [(0, COLORS['primary'], 'Dry Day'), (1, COLORS['secondary'], 'Rainy Day')]:\n    mask = daily_weather['is_rainy'] == is_rainy\n    ax[0].scatter(daily_weather[mask]['avg_temp'], daily_weather[mask]['total_rides'],\n                alpha=0.7, color=color, s=50, label=label)\n\n# fit regression line across all days\nz = np.polyfit(daily_weather['avg_temp'], daily_weather['total_rides'], 1)\np = np.poly1d(z)\nx_line = np.linspace(daily_weather['avg_temp'].min(), daily_weather['avg_temp'].max(), 100)\n\n# initialize subplot\nax[0].plot(x_line, p(x_line), color='gray', linewidth=1.5, linestyle='--', alpha=0.7)\nax[0].set_title('Temperature vs Daily Ridership')\nax[0].set_xlabel('Average Daily Temperature (F)')\nax[0].set_ylabel('Total Daily Departures')\nax[0].legend(fontsize=9)\nax[0].yaxis.set_major_formatter(\n    plt.FuncFormatter(lambda x, p: f'{x/1000:.0f}K')\n)\n\n# precipitation vs ridership subplot\n# assign proper labels and color\nax[1].scatter(daily_weather['avg_precip'], daily_weather['total_rides'], alpha=0.7, color=COLORS['primary'], s=50)\n\n# fit regression line across all days\nz2 = np.polyfit(daily_weather['avg_precip'], daily_weather['total_rides'], 1)\np2 = np.poly1d(z2)\nx_line2 = np.linspace(0, daily_weather['avg_precip'].max(), 100)\nax[1].plot(x_line2, p2(x_line2), color=COLORS['secondary'], linewidth=2)\n# todo: possibly annotate any outlier days if they are found\n# initialize subplot\nax[1].set_title('Precipitation vs Daily Ridership')\nax[1].set_xlabel('Average Daily Precipitation (inches)')\nax[1].set_ylabel('Total Daily Departures')\nax[1].yaxis.set_major_formatter(\n    plt.FuncFormatter(lambda x, p: f'{x/1000:.0f}K')\n)\n\n# rainy vs dry day distribution subplot\n# count number of dry and rainy rides\ndry_rides = daily_weather[daily_weather['is_rainy'] == 0]['total_rides']\nrainy_rides = daily_weather[daily_weather['is_rainy'] == 1]['total_rides']\n\n# plot results in boxplot, add mean notations to each box\nax[2].boxplot([dry_rides, rainy_rides],\n    tick_labels=['Dry Days', 'Rainy Days'],\n    patch_artist=True,\n    boxprops=dict(alpha=0.7),\n    medianprops=dict(color='white', linewidth=2))\nax[2].patches[0].set_facecolor(COLORS['primary'])\nax[2].patches[1].set_facecolor(COLORS['secondary'])\n\nfor i, (data, label) in enumerate([(dry_rides, 'Dry'), (rainy_rides, 'Rainy')]):\n    ax[2].text(i + 1, data.mean(), f'Mean: {data.mean()/1000:.1f}K', ha='right', \n                va='bottom', fontsize=9, fontweight='bold', rotation=45)\nax[2].set_title('Daily Ridership: Dry vs Rainy Days')\nax[2].set_ylabel('Total Daily Departures')\nax[2].yaxis.set_major_formatter(\n    plt.FuncFormatter(lambda x, p: f'{x/1000:.0f}K')\n)\n\nplt.suptitle('Weather Effects on CitiBike Daily Ridership', fontsize=14, y=1.02)\nplt.tight_layout()\nplt.savefig('../figures/eda/weather_vs_ridership.png', bbox_inches='tight')\nplt.show()\n# print some statistics\nprint(f\"Dry day mean ridership:   {dry_rides.mean():,.0f}\")\nprint(f\"Rainy day mean ridership: {rainy_rides.mean():,.0f}\")\nprint(f\"Rain reduction:           {(1 - rainy_rides.mean()/dry_rides.mean())*100:.1f}%\")\nprint(f\"Temp correlation with daily ridership: {daily_weather['avg_temp'].corr(daily_weather['total_rides']):.3f}\")\nprint(f\"Precip correlation with daily ridership: {daily_weather['avg_precip'].corr(daily_weather['total_rides']):.3f}\")\n\n\n\n\n\n\n\n\n\nDry day mean ridership:   66,964\nRainy day mean ridership: 55,941\nRain reduction:           16.5%\nTemp correlation with daily ridership: 0.006\nPrecip correlation with daily ridership: -0.318",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#regular-vs-electric-bikes",
+    "href": "notebooks/02_eda.html#regular-vs-electric-bikes",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.8: Regular vs Electric Bikes",
+    "text": "2.8: Regular vs Electric Bikes\nHourly ridership pattern and total share split by bike type. Electric bikes account for 65% of all departures. Both types follow the same weekday ridership pattern, but electric bikes showcase a more profound peak during evening rush hour.\n\n\nCode\n# initialize dataframe, plots\nbike_hourly = (df.groupby(['hour_of_day', 'rideable_type'])['departures']\n            .mean()\n            .reset_index())\nfig, ax = plt.subplots(1, 2, figsize=(14, 5))\n\n# plot hourly pattern by bike type\nfor bike_type, color in [('classic_bike', COLORS['primary']), ('electric_bike', COLORS['secondary'])]:\n    data = bike_hourly[bike_hourly['rideable_type'] == bike_type]\n    ax[0].plot(data['hour_of_day'], data['departures'],\n        label=bike_type.replace('_', ' ').title(),\n        color=color, linewidth=2.5, marker='o', markersize=4)\n\nax[0].set_title('Hourly Ridership Pattern by Bike Type')\nax[0].set_xlabel('Hour of Day')\nax[0].set_ylabel('Average Departures per Station')\nax[0].set_xticks(range(0, 24))\nax[0].legend()\n\n# plot total share by bike type\nbike_totals = df.groupby('rideable_type')['departures'].sum()\nax[1].pie(bike_totals.values, labels=[t.replace('_', ' ').title() for t in bike_totals.index],\n        colors=[COLORS['primary'], COLORS['secondary']],\n        autopct='%1.1f%%', startangle = 90,\n        wedgeprops=dict(edgecolor='white', linewidth=2))\nax[1].set_title('Total Departures by Bike Type')\n\n# configure plot, display\nplt.suptitle('Classic vs Electric Bike Usage Patterns', fontsize=14, y=1.02)\nplt.tight_layout()\nplt.savefig('../figures/eda/classic_vs_electric.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#trip-duration-distribution",
+    "href": "notebooks/02_eda.html#trip-duration-distribution",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.9: Trip Duration Distribution",
+    "text": "2.9: Trip Duration Distribution\nDistribution of average trip duration per station per hour. Median of 10.3 minutes confirms CitiBike’s primary role as a short-distance mode of transport. 99.2% of observations fall below 60 minutes, so it serves as a reasonable cutoff\n\n\nCode\n# initialize dataframes (clipping at 60 min trips for readability, but noting what percent are longer)\nunder_60 = df_model[df_model['avg_duration_min'] &lt;= 60]\npct_under_60 = (len(under_60) / len(df_model)) * 100\n\nfig, ax = plt.subplots(figsize=(10, 5))\nax.hist(under_60['avg_duration_min'], bins=60, color=COLORS['primary'], edgecolor='white', linewidth=0.3, alpha=0.85)\nax.axvline(df_model['avg_duration_min'].median(), color=COLORS['secondary'], linewidth=2,\n        label=f\"Median: {df_model['avg_duration_min'].median():.1f} min\")\nax.set_title(f\"Distribution of Average trip Duration ( Trips &lt;= 60 mins = {pct_under_60:.1f}% of data)\",\n    fontsize=13, pad=12)\nax.set_xlabel('Average Duration (minutes)')\nax.set_ylabel('Count')\nax.legend()\nplt.tight_layout()\nplt.savefig('../figures/eda/trip_duration_distribution.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#station-flow-imbalance",
+    "href": "notebooks/02_eda.html#station-flow-imbalance",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.10: Station Flow Imbalance",
+    "text": "2.10: Station Flow Imbalance\nNet flow (departures minus arrivals) per station ranked to identify the issue of rebalancing stations. Net arrival stations reach imbalances 6x larger than net departure stations — concentrated at leisure destinations rather than residential origins. Pier 61 at Chelsea Piers is the most extreme arrival sink in the network.\n\n\nCode\n# initialize dataframe\nstation_balance = (df_model.groupby('start_station_name')\n                .agg(total_departures=('ride_count', 'sum'),\n                    total_arrivals=('arrivals', 'sum'))\n                .reset_index())\n\nstation_balance['net_flow'] = (station_balance['total_departures'] - station_balance['total_arrivals'])\n\n# get top 10 net sources and sinks\ntop_sources = station_balance.nlargest(10, 'net_flow') \ntop_sinks = station_balance.nsmallest(10, 'net_flow')\n\n# initialize, set up plots\nfig, ax = plt.subplots(1, 2, figsize=(14, 6))\nax[0].barh(top_sources['start_station_name'], top_sources['net_flow'], color=COLORS['primary'], edgecolor='white')\nax[0].set_title('Top 10 Net Departure Stations\\n(more bikes leave than arrive)', fontsize=11)\nax[0].set_xlabel('Net Flow (Departures - Arrivals)')\nax[1].barh(top_sinks['start_station_name'], top_sinks['net_flow'], color=COLORS['secondary'], edgecolor='white')\nax[1].set_title('Top 10 Net Arrival Stations\\n(more bikes arrive than leave)', fontsize=11)\nax[1].set_xlabel('Net Flow (Departures - Arrivals)')\n\n# configure and show plots\nplt.suptitle('Station-Level Bike Flow Imbalance', fontsize=14, y=1.02)\nplt.tight_layout()\nplt.savefig('../figures/eda/station_flow_imbalance.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#correlation-heatmap",
+    "href": "notebooks/02_eda.html#correlation-heatmap",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.10: Correlation Heatmap",
+    "text": "2.10: Correlation Heatmap\nPairwise correlation matrix between all numeric features and the target (ride_count). No single feature strongly correlates with ridership - drives home the idea that demand is driven by a combination of factors. Some of the other pairwise correlations here check out (is_weekend and day_of_week, month and temperature)\n\n\nCode\nnumeric_cols = [\n    'ride_count', 'hour_of_day', 'day_of_week', 'month', 'is_weekend', \n    'is_rush_hour', 'HourlyDryBulbTemperature', 'HourlyPrecipitation', \n    'HourlyWindSpeed', 'avg_duration_min'\n]\n\n# get correlation matrix for numeric features\ncorr = df_model[numeric_cols].corr()\n\nfig, ax = plt.subplots(figsize=(11 ,9))\nmask = np.triu(np.ones_like(corr, dtype=bool)) # upper triangle mask\nsns.heatmap(corr, mask=mask, annot=True, fmt='.2f', cmap='coolwarm', center=0, vmin=-1, vmax=1, ax=ax,\n        linewidths=0.5, cbar_kws={'shrink': 0.8})\nax.set_title('Feature Correlation Matrix', fontsize=13, pad=12)\n\nplt.tight_layout()\nplt.savefig('../figures/eda/correlation_heatmap.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#station-spatial-map",
+    "href": "notebooks/02_eda.html#station-spatial-map",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.11: Station Spatial Map",
+    "text": "2.11: Station Spatial Map\nGeographic overview of station ridership concentration. Dot size encodes total traffic volume, color encodes hourly ride count. Manhattan is immediately a visual focal point.\n\n\nCode\nfig, ax = plt.subplots(figsize=(10, 13))\n\n# plot nta boundaries as light background\nnta.plot(ax=ax, color=\"#1a1a2e\", edgecolor='#dddddd', linewidth=0.3)\n\n# verify boundaries of latitude and longitude ranges of points\nprint(f\"Station lat range: {stations_geo['start_lat'].min():.4f} - {stations_geo['start_lat'].max():.4f}\")\nprint(f\"Station lng range: {stations_geo['start_lng'].min():.4f} - {stations_geo['start_lng'].max():.4f}\")\n\n# plot stations\nscatter = ax.scatter(\n    stations_geo['start_lng'],\n    stations_geo['start_lat'],\n    c=stations_geo['avg_ride_count'],\n    cmap='YlOrRd',\n    s=stations_geo['total_traffic'] / stations_geo['total_traffic'].max() * 80 + 5, # optimal scaling parameter that i've found\n    alpha=0.85,\n    edgecolors='none'\n)\nplt.colorbar(scatter, ax=ax, label='Average Hourly Ride Count', shrink=0.6)\nax.set_title('CitiBike Station Ridership - April through June 2024\\n'\n        '(dot size = total traffic, color = avg hourly rides)', fontsize=12, pad=12)\nax.set_xlabel('Longitude')\nax.set_ylabel('Latitude')\n# prevent out of bounds plotting just in case\nax.set_xlim(-74.08, -73.84)\nax.set_ylim(40.62,40.90)\n\nplt.tight_layout()\nplt.savefig('../figures/eda/station_spatial_map.png', bbox_inches='tight')\nplt.show()\n\n\nStation lat range: 40.6334 - 40.8863\nStation lng range: -74.0711 - -73.8467",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "notebooks/02_eda.html#patterns-with-school-proximity",
+    "href": "notebooks/02_eda.html#patterns-with-school-proximity",
+    "title": "2: Exploratory Data Analysis",
+    "section": "2.12: Patterns with School Proximity",
+    "text": "2.12: Patterns with School Proximity\nHourly ridership pattern split by whether stations are within 300 meters of a school (50% of stations). School adjacent stations show consistently lower ridership - likely because of those stations being concentrated in lower-ridership outer boroughs. Monthly analysis confirms no school-year-ending effect on June ridership patterns\n\n\nCode\nschool_hourly = (df_model.merge(          \n        station_lookup[['start_station_id', 'near_school']],\n        on='start_station_id', how='left')\n    .groupby(['near_school', 'hour_of_day', 'is_weekend'])\n    .agg(avg_rides=('ride_count', 'mean'))\n    .reset_index()\n)\n\nfig, ax = plt.subplots(1, 2, figsize = (14, 5))\nfor ax, is_weekend, title in [(ax[0], 0, 'Weekday'), (ax[1], 1, 'Weekend')]:\n    subset = school_hourly[school_hourly['is_weekend'] == is_weekend]\n    for near, color, label in [(0, COLORS['primary'], 'Not Near School'), (1, COLORS['secondary'], 'Near School')]:\n        data = subset[subset['near_school'] == near]\n        ax.plot(data['hour_of_day'], data['avg_rides'],\n            color=color, linewidth=2.5, label=label, marker='o', markersize=4)\n\n    ax.axvspan(8, 15, alpha=0.08, color='gray', label='School hours')\n    ax.set_title(f'{title} Ridership: Near School vs Not')\n    ax.set_xlabel('Hour of Day')\n    ax.set_ylabel('Average Ride Count per Station')\n    ax.set_xticks(range(0, 24))\n    ax.legend(fontsize=9)\n\nplt.suptitle('School Proximity Effect on CitiBike Ridership', fontsize=14, y=1.02)\nplt.tight_layout()\nplt.savefig('../figures/eda/school_proximity_ridership.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Exploratory Data Analysis"
+    ]
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "CitiBike Spatiotemporal Ridership Analysis",
+    "section": "",
+    "text": "GitHub Repository ⇒\nAnalysis and prediction of NYC CitiBike ridership patterns using historical trip data, weather observations, and geospatial neighborhood data across April-June 2024\nThis project aggregates ~5 million individual trips into hourly station-level counts, merged with weather and spatial data. This dataset is then analyzed and used to build predictive models to understand what drives ridership demand.",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "index.html#project-overview",
+    "href": "index.html#project-overview",
+    "title": "CitiBike Spatiotemporal Ridership Analysis",
+    "section": "",
+    "text": "GitHub Repository ⇒\nAnalysis and prediction of NYC CitiBike ridership patterns using historical trip data, weather observations, and geospatial neighborhood data across April-June 2024\nThis project aggregates ~5 million individual trips into hourly station-level counts, merged with weather and spatial data. This dataset is then analyzed and used to build predictive models to understand what drives ridership demand.",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "index.html#navigation",
+    "href": "index.html#navigation",
+    "title": "CitiBike Spatiotemporal Ridership Analysis",
+    "section": "Navigation",
+    "text": "Navigation\nUse the navbar above to explore each phase of the analysis:\n\nPipeline: data loading, aggregation, spatial joins, weather merge\nEDA: temporal, geographic, weather, and behavioral patterns\n\nModeling: feature engineering, model comparison, spatial residuals\nMaps: choropleth, bubble map, flow imbalance",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "index.html#key-findings",
+    "href": "index.html#key-findings",
+    "title": "CitiBike Spatiotemporal Ridership Analysis",
+    "section": "Key Findings",
+    "text": "Key Findings\n\n\n\nFinding\nValue\n\n\n\n\nRain ridership reduction\n16.5%\n\n\nRush hour multiplier\n1.40x\n\n\nElectric bike share\n65%\n\n\nBest model R²\n0.192\n\n\nBaseline RMSE improvement\n10.35%\n\n\nPier 61 flow imbalance\n6x network average",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "index.html#dataset",
+    "href": "index.html#dataset",
+    "title": "CitiBike Spatiotemporal Ridership Analysis",
+    "section": "Dataset",
+    "text": "Dataset\n\n~5 million CitiBike trips aggregated to 1.9M hourly station observations\n2,289 active stations across NYC\nMerged with NOAA hourly weather and NYC geospatial neighborhood data",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "index.html#data-sources",
+    "href": "index.html#data-sources",
+    "title": "CitiBike Spatiotemporal Ridership Analysis",
+    "section": "Data Sources",
+    "text": "Data Sources\n\nCitiBike System Data\nNOAA Local Climatological Data\nNYC Open Data",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "dashboard/DEPLOY.html",
+    "href": "dashboard/DEPLOY.html",
+    "title": "",
+    "section": "",
+    "text": "Code"
+  },
+  {
+    "objectID": "dashboard/DEPLOY.html#the-idea-in-one-line",
+    "href": "dashboard/DEPLOY.html#the-idea-in-one-line",
+    "title": "",
+    "section": "The idea in one line",
+    "text": "The idea in one line\ndashboard-deploy is master plus four generated files.\nThose four files (the trained model, its metrics, the station list, and the borough summary) are too “generated” to belong on master, but Streamlit needs them to run. So they live on their own branch, and that’s the branch Streamlit builds.\n\n\n\n\nmaster\ndashboard-deploy\n\n\n\n\nNotebooks, figures, dashboard code\nyes\nyes\n\n\nThe 4 generated files\nno\nyes\n\n\nWhat people see on GitHub\nyes\n—\n\n\nWhat Streamlit runs\n—\nyes\n\n\n\nThe one rule: changes flow master → dashboard-deploy, never backwards. Merging the other way would drag the generated files onto master."
+  },
+  {
+    "objectID": "dashboard/DEPLOY.html#first-time-deploy",
+    "href": "dashboard/DEPLOY.html#first-time-deploy",
+    "title": "",
+    "section": "First-time deploy",
+    "text": "First-time deploy\nDo these once, in order.\n\n1. Push the project to GitHub\nStreamlit can only see code that’s on GitHub, so this has to happen first.\ngit add .\ngit commit -m \"Add Streamlit dashboard\"\ngit push origin master\nThe four generated files are gitignored, so this commit contains code only — you don’t have to be careful about it.\n\n\n2. Build the model files\nNeeds data/processed/, which comes from running notebooks/01_setup.ipynb. You do not need to run notebooks 02–04 for this.\npip install -r dashboard/requirements.txt\npython dashboard/export_artifacts.py\nThis trains the Random Forest and writes:\n\ndashboard/model_artifacts/rf_model.pkl (~4 MB)\ndashboard/model_artifacts/model_metadata.json\ndashboard/data/station_lookup.csv\ndashboard/data/borough_stats.csv\n\n\n\n3. Create the deploy branch\ngit checkout -b dashboard-deploy\n\ngit add -f dashboard/model_artifacts/ dashboard/data/\ngit commit -m \"Add dashboard artifacts\"\ngit push -u origin dashboard-deploy\n\ngit checkout master\nWhy -f? Those files are gitignored on purpose, so you can’t add them by accident. The -f (force) is you saying “yes, I mean it, just here.” You only need it this once — after this commit git tracks them on this branch permanently.\n\n\n4. Turn it on\nGo to share.streamlit.io → New app, and set:\n\n\n\nField\nValue\n\n\n\n\nRepository\nkacp3rrr/citibike-spatiotemporal-analysis\n\n\nBranch\ndashboard-deploy\n\n\nMain file path\ndashboard/app.py\n\n\nPython version\n3.12 or 3.13\n\n\n\nNot Python 3.14 — Streamlit doesn’t offer it, and dashboard/requirements.txt is written for 3.12/3.13 on purpose.\n\n\n5. Add your link to the README\nOnce it’s live you’ll get a URL like https://citibike-spatiotemporal-analysis.streamlit.app. Put it at the top of README.md, replacing the placeholder link on line 7."
+  },
+  {
+    "objectID": "dashboard/DEPLOY.html#changing-things-later",
+    "href": "dashboard/DEPLOY.html#changing-things-later",
+    "title": "",
+    "section": "Changing things later",
+    "text": "Changing things later\n\nChanged something in dashboard/ (the common case)\nEdit on master as normal, then push the change through:\n# on master: edit, commit, push as usual\ngit push origin master\n\ngit checkout dashboard-deploy\ngit merge master\ngit push\ngit checkout master\nStreamlit redeploys automatically. Nothing else to do.\n\nYou can edit dashboard-deploy directly and skip the merge — the live app will update fine. The catch is that master’s copy of the dashboard code then falls behind what’s actually running, so what people read on GitHub stops matching the live site. If you do it anyway and want the change on master later, git cherry-pick &lt;commit&gt; brings the code across without the generated files.\n\n\n\nRe-ran the notebooks and want the app to match\npython dashboard/export_artifacts.py\n\ngit checkout dashboard-deploy\ngit merge master\ngit add -f dashboard/model_artifacts/ dashboard/data/\ngit commit -m \"Refresh dashboard artifacts\"\ngit push\ngit checkout master\nIf you do this, the numbers shown in the dashboard are hardcoded in dashboard/utils.py (KEY_STATS) — check they still match your new notebook output.\n\n\nJust changed notebooks or the README\nNothing to do. The live app only re-deploys if you push to dashboard-deploy, and none of that affects it."
+  },
+  {
+    "objectID": "dashboard/DEPLOY.html#if-something-goes-wrong",
+    "href": "dashboard/DEPLOY.html#if-something-goes-wrong",
+    "title": "",
+    "section": "If something goes wrong",
+    "text": "If something goes wrong\nApp won’t start / “file does not exist” Check the branch is dashboard-deploy and not master — master doesn’t have the model files. Streamlit’s settings let you switch branches without redeploying from scratch.\n“No module named …” Streamlit installs dashboard/requirements.txt (it checks the entrypoint’s folder before the repo root). If you added an import, add the package there — not to the root requirements.txt, which is for the notebooks.\nModel fails to load / version warning scikit-learn is pinned in dashboard/requirements.txt because a saved model has to be opened by the same version that wrote it. If you upgrade scikit-learn locally, change that pin and re-run export_artifacts.py.\nDashboard shows warnings instead of the predictor or map That’s it telling you the generated files are missing — you’re either on the wrong branch, or step 2 hasn’t been run.\nApp is slow the first time someone opens it Streamlit puts apps to sleep after about a week of no visitors. It wakes on the next visit and takes a few seconds. Worth knowing before someone opens your link cold in an interview.\nAccidentally merged dashboard-deploy into master The generated files are now tracked on master. Undo with:\ngit rm --cached -r dashboard/model_artifacts/ dashboard/data/\ngit commit -m \"Remove generated files from master\"\nThey stay on your disk and on dashboard-deploy — this only untracks them here."
+  },
+  {
+    "objectID": "notebooks/01_setup.html",
+    "href": "notebooks/01_setup.html",
+    "title": "1: Setup and Initial Data Processing",
+    "section": "",
+    "text": "This notebook builds the core dataset used throughout the project. Raw data is cleaned, merged, and saved as a single processed dataset for downstream analysis and modeling",
+    "crumbs": [
+      "Pipeline & Setup"
+    ]
+  },
+  {
+    "objectID": "notebooks/01_setup.html#data-sources",
+    "href": "notebooks/01_setup.html#data-sources",
+    "title": "1: Setup and Initial Data Processing",
+    "section": "Data Sources",
+    "text": "Data Sources\n\nCitiBike trip Data: I choose the months of April, May, and June of 2024, in hopes of getting a nice variance of weather values, as well as potentially fluctuating ridership counts from school being in vs out of session for NYC students\nNOAA Weather: Hourly temperature, precipitation, and wind speed from the Central Park Weather Station (WBAN 94728)\nNYC Spatial Data: Neighborhood Tabulation Area (NTA) boundaries for mapping, and school locations from the NYC Department of City Planning\n\n\n\nCode\nimport pandas as pd\nimport numpy as np\nimport glob\nimport geopandas as gpd",
+    "crumbs": [
+      "Pipeline & Setup"
+    ]
+  },
+  {
+    "objectID": "notebooks/01_setup.html#load-and-aggregate-citibike-data",
+    "href": "notebooks/01_setup.html#load-and-aggregate-citibike-data",
+    "title": "1: Setup and Initial Data Processing",
+    "section": "1.1: Load and Aggregate CitiBike Data",
+    "text": "1.1: Load and Aggregate CitiBike Data\nLoad all CSV files matching file_pattern from CitiBike data and aggregate it to the hourly station level. Track departures, arrivals, bike type breakdown, and trip duration. This will serve as the primary source of downstream analysis, and data additions will build on top of this\nI chose 2 CSV’s from each month, which should represent a diverse enough range of ridership to be representative for this project. You can call the load_and_aggregate_month function on whatever months you choose to include, as long as you have the corresponding weather data, as it not matching will cause downstream merging issues. You will also have to adjust the bleed row cutoff for the first month in 1.1b\n\n\nCode\ndef load_and_aggregate_month(file_pattern):\n    cols = ['rideable_type', 'started_at', 'ended_at', 'start_station_name', 'start_station_id', 'end_station_name', \n        'end_station_id', 'start_lat', 'start_lng', 'end_lat', 'end_lng']\n    \n    files = glob.glob(file_pattern)\n    departure_chunks = []\n    arrival_chunks = []\n    \n    for f in files:\n        # create chunk from csv file, add new features\n        chunk = pd.read_csv(f, usecols=cols, low_memory=False)\n        chunk['started_at'] = pd.to_datetime(chunk['started_at'])\n        chunk['ended_at'] = pd.to_datetime(chunk['ended_at'])\n        chunk['start_hour'] = chunk['started_at'].dt.floor('h')\n        chunk['end_hour'] = chunk['ended_at'].dt.floor('h')\n        \n        # clean any null entries just in case\n        chunk['start_lat'] = chunk['start_lat'].replace(0, pd.NA)\n        chunk['start_lng'] = chunk['start_lng'].replace(0, pd.NA)\n        chunk['end_lat'] = chunk['end_lat'].replace(0, pd.NA)\n        chunk['end_lng'] = chunk['end_lng'].replace(0, pd.NA)\n        chunk = chunk.dropna(subset=['start_station_id', 'start_lat', 'start_lng', 'end_station_id'])\n        \n        # compute trip duration, clear any outlier / invalid durations\n        chunk['duration_min'] = (chunk['ended_at'] - chunk['started_at']).dt.total_seconds() / 60\n        chunk = chunk[(chunk['duration_min'] &gt; 0) & (chunk['duration_min'] &lt; 1440)]\n        \n        # aggregate departure chunk\n        departures = (chunk.groupby(['start_hour', 'start_station_id', 'start_station_name', 'start_lat', 'start_lng', 'rideable_type'])\n                .agg(\n                    departures=('started_at', 'count'),\n                    avg_duration_min=('duration_min', 'mean')\n                )\n                .reset_index())\n        departure_chunks.append(departures)\n        \n        # aggregate arrival chunk\n        arrivals = (chunk.groupby(['end_hour', 'end_station_id'])\n                .agg(arrivals=('started_at', 'count'))\n                .reset_index()\n                .rename(columns={\n                    'end_hour': 'start_hour',\n                    'end_station_id': 'start_station_id'\n                }))\n        arrival_chunks.append(arrivals)\n\n    # merge departures, arrivals across files\n    departure_aggregates = (pd.concat(departure_chunks)\n                        .groupby(['start_hour', 'start_station_id', 'start_station_name', \n                            'start_lat', 'start_lng', 'rideable_type'])\n                        .agg(\n                            departures=('departures', 'sum'),\n                            avg_duration_min=('avg_duration_min', 'mean')\n                        )\n                        .reset_index())\n\n    arrival_aggregates = (pd.concat(arrival_chunks)\n                        .groupby(['start_hour', 'start_station_id'])['arrivals']\n                        .sum()\n                        .reset_index())\n\n    print(\"departure columns:\", departure_aggregates.columns.tolist())\n    print(\"arrival columns:\", arrival_aggregates.columns.tolist())\n    \n    # merge arrivals and departures, add total_traffic feature \n    month_agg = departure_aggregates.merge(arrival_aggregates, on=['start_hour', 'start_station_id'], how='left')\n    month_agg['arrivals'] = month_agg['arrivals'].fillna(0).astype(int)\n    month_agg['total_traffic'] = month_agg['departures'] + month_agg['arrivals']\n    \n    return month_agg\n\n# this is the place if you want to change which months you choose. aggregates using all files\n# that match the given month header\napril = load_and_aggregate_month('../data/raw/citibike/202404*.csv')\nmay = load_and_aggregate_month('../data/raw/citibike/202405*.csv')\njune = load_and_aggregate_month('../data/raw/citibike/202406*.csv')\n\ndf = pd.concat([april, may, june], ignore_index=True)\nprint(df.head())\n\n\ndeparture columns: ['start_hour', 'start_station_id', 'start_station_name', 'start_lat', 'start_lng', 'rideable_type', 'departures', 'avg_duration_min']\narrival columns: ['start_hour', 'start_station_id', 'arrivals']\ndeparture columns: ['start_hour', 'start_station_id', 'start_station_name', 'start_lat', 'start_lng', 'rideable_type', 'departures', 'avg_duration_min']\narrival columns: ['start_hour', 'start_station_id', 'arrivals']\ndeparture columns: ['start_hour', 'start_station_id', 'start_station_name', 'start_lat', 'start_lng', 'rideable_type', 'departures', 'avg_duration_min']\narrival columns: ['start_hour', 'start_station_id', 'arrivals']\n           start_hour start_station_id            start_station_name  \\\n0 2024-03-31 11:00:00          5721.07     Thompson St & Bleecker St   \n1 2024-03-31 11:00:00          6224.05               W 20 St & 8 Ave   \n2 2024-03-31 12:00:00          5335.03  Bialystoker Pl & Delancey St   \n3 2024-03-31 13:00:00          6224.05               W 20 St & 8 Ave   \n4 2024-03-31 13:00:00          6224.06               8 Ave & W 24 St   \n\n   start_lat  start_lng rideable_type  departures  avg_duration_min  arrivals  \\\n0  40.728401 -73.999688  classic_bike           1        756.402067         0   \n1  40.743453 -74.000040  classic_bike           1        877.048350         0   \n2  40.716226 -73.982612  classic_bike           1        827.761483         0   \n3  40.743453 -74.000040  classic_bike           1       1128.324350         0   \n4  40.745911 -73.998071  classic_bike           1        743.863017         0   \n\n   total_traffic  \n0              1  \n1              1  \n2              1  \n3              1  \n4              1",
+    "crumbs": [
+      "Pipeline & Setup"
+    ]
+  },
+  {
+    "objectID": "notebooks/01_setup.html#b-collapse-rideable-type-for-modeling",
+    "href": "notebooks/01_setup.html#b-collapse-rideable-type-for-modeling",
+    "title": "1: Setup and Initial Data Processing",
+    "section": "1.1b: Collapse Rideable Type for Modeling",
+    "text": "1.1b: Collapse Rideable Type for Modeling\nCreate a collapsed version for modeling where Y = total departures per station per hour. Leave a separate table intact including splits by bike type (electric vs classic), although that is not the primary dataset that will be used\n\n\nCode\ndf_model = (df.groupby(['start_hour', 'start_station_id', 'start_station_name', 'start_lat', 'start_lng'])\n        .agg(\n            ride_count=('departures', 'sum'),\n            arrivals=('arrivals', 'sum'),\n            total_traffic=('total_traffic', 'sum'),\n            avg_duration_min=('avg_duration_min', 'mean')\n        )\n        .reset_index())\n\n# drop march bleed rows\ndf = df[df['start_hour'] &gt;= '2024-04-01'].copy()\ndf_model = df_model[df_model['start_hour'] &gt;= '2024-04-01'].copy()\nprint(df_model.shape)\n\n\n(1892070, 9)",
+    "crumbs": [
+      "Pipeline & Setup"
+    ]
+  },
+  {
+    "objectID": "notebooks/01_setup.html#spatial-joining",
+    "href": "notebooks/01_setup.html#spatial-joining",
+    "title": "1: Setup and Initial Data Processing",
+    "section": "1.2: Spatial Joining",
+    "text": "1.2: Spatial Joining\nTake the latitude and longitude points of stations, and map them to a neighborhood via an NTA shapefile. Also join with school data. Stations that are on water boundaries are assigned via a nearest-neighbor fallback. Some feature engineering on the school data is also done ahead of time.\n\n\nCode\n# form dataframe of unique stations\nstations = df_model[['start_station_id', 'start_station_name', 'start_lat', 'start_lng']].drop_duplicates()\n\n# initialize a GeoDataFrame with coordinates from each station\ngdf = gpd.GeoDataFrame(stations,\n    geometry=gpd.points_from_xy(stations.start_lng, stations.start_lat),\n    crs='EPSG:4326')\n\n# load neighborhood tabulation areas\nnta = gpd.read_file('../data/raw/spatial/nta.shp').to_crs('EPSG:4326')\n\n# left join the GeoDataFrame and the nta shape file to map each station to an NTA polygon \nstations_nta = gpd.sjoin(gdf, nta[['ntaname', 'boroname', 'geometry']], how='left', predicate='within')\n\n# verify any stations that may have not been matched to a polygon (e.g. ones that exist on a boundary)\nunmatched = stations_nta['ntaname'].isnull().sum()\nprint(f\"{unmatched} unmatched stations out of {len(stations_nta)}\")\n\n# join unmatched stations to nearest neighbor, merge back with original stations_nta dataframe\nif unmatched &gt; 0:\n    matched = stations_nta[stations_nta['ntaname'].notna()]\n    unmatched_gdf = gdf[~gdf['start_station_id'].isin(matched['start_station_id'])]\n    nearest = gpd.sjoin_nearest(unmatched_gdf.to_crs('EPSG:3857'),\n                                nta[['ntaname', 'boroname', 'geometry']].to_crs('EPSG:3857'),\n                                how='left').to_crs('EPSG:4326')\n    stations_nta = pd.concat([matched, nearest], ignore_index=True)\n\n# load school location data and assign it to a station\nschools = gpd.read_file('../data/raw/spatial/schools.shp')\nprint(schools.columns.tolist())\nprint(schools.crs)\nprint(schools.shape)\n\nstations_proj = gdf.to_crs('EPSG:3857')\nstations_school = gpd.sjoin_nearest(\n    stations_proj,\n    schools[['geometry']],\n    how='left',\n    distance_col='dist_to_nearest_school_m'\n)\n\n# drop duplicates to maintain one row per stations\nstations_school = (stations_school[['start_station_id','dist_to_nearest_school_m']]\n                    .drop_duplicates(subset='start_station_id'))\n\n# binary feature to denote whether a station is within 300 meters of a school - makes for interesting insight down the line\nstations_school['near_school'] = (\n    stations_school['dist_to_nearest_school_m'] &lt;= 300\n).astype(int)\n\n# merge back\ndf_model = df_model.merge(\n    stations_nta[['start_station_id', 'ntaname', 'boroname']],\n    on='start_station_id', how='left')\n\ndf = df.merge(\n    stations_nta[['start_station_id', 'ntaname', 'boroname']],\n    on='start_station_id', how='left')\n\n\n36 unmatched stations out of 2289\n['ATS', 'Building_C', 'Location_C', 'Name', 'Geographic', 'Latitude', 'Longitude', 'geometry']\nEPSG:3857\n(1950, 8)",
+    "crumbs": [
+      "Pipeline & Setup"
+    ]
+  },
+  {
+    "objectID": "notebooks/01_setup.html#weather-merge",
+    "href": "notebooks/01_setup.html#weather-merge",
+    "title": "1: Setup and Initial Data Processing",
+    "section": "1.3: Weather Merge",
+    "text": "1.3: Weather Merge\nMerge CitiBike data with NOAA hourly readings by timestamp\n\n\nCode\n# initialize weather dataframe from NOAA local climatological data for April-June 2024\nweather = pd.read_csv('../data/raw/weather/noaa_nyc_lcd_aprmayjun_2024.csv')\nweather['DATE'] = pd.to_datetime(weather['DATE']).dt.floor('h')\nweather = weather[['DATE', 'HourlyDryBulbTemperature', 'HourlyPrecipitation', 'HourlyWindSpeed']]\n\n# replace any trace precipitation (labeled 'T' in NOAA data) with a small nonzero value\nweather['HourlyPrecipitation'] = weather['HourlyPrecipitation'].replace('T', 0.001)\n\n# convert all weather data entries to numeric values\nweather_cols = ['HourlyDryBulbTemperature', 'HourlyPrecipitation', 'HourlyWindSpeed']\nfor col in weather_cols:\n    weather[col] = pd.to_numeric(weather[col], errors=\"coerce\")\n\n# drop duplicates from weather data, as the same readings may exist, but under different report types (NOAA data quirk)\nweather = weather.dropna(subset=['DATE']).drop_duplicates(subset=['DATE'])\n\n# merge into model dataframe, fill gaps in weather data\ndf_model = df_model.merge(weather, left_on='start_hour', right_on='DATE', how='left')\nfor col in weather_cols:\n    df_model[col] = df_model[col].ffill(limit=3)\n\ndf_model['HourlyPrecipitation'] = df_model['HourlyPrecipitation'].fillna(0)\ndf_model['HourlyWindSpeed'] = df_model['HourlyWindSpeed'].fillna(df_model['HourlyWindSpeed'].median())",
+    "crumbs": [
+      "Pipeline & Setup"
+    ]
+  },
+  {
+    "objectID": "notebooks/01_setup.html#additional-time-features-final-checks",
+    "href": "notebooks/01_setup.html#additional-time-features-final-checks",
+    "title": "1: Setup and Initial Data Processing",
+    "section": "1.4: Additional Time Features & Final Checks",
+    "text": "1.4: Additional Time Features & Final Checks\nAdditional time features derived for downstream analysis. Analyze the final dataframes that will be saved\n\n\nCode\n# add additional time features to the data\ndf_model['hour_of_day'] = df_model['start_hour'].dt.hour\ndf_model['day_of_week'] = df_model['start_hour'].dt.dayofweek \ndf_model['month'] = df_model['start_hour'].dt.month\ndf_model['is_weekend'] = df_model['day_of_week'].isin([5,6]).astype(int)\ndf_model['is_rush_hour'] = df_model['hour_of_day'].isin([7,8,9,16,17,18,19]).astype(int)\n\nprint(\"\\n── df_model (used for modeling + most EDA) ──\")\nprint(df_model.shape)\nprint(df_model.dtypes)\nprint(df_model.isnull().sum())\nprint(df_model.describe())\n\nprint(\"\\n── df (rideable_type split, used for bike type EDA) ──\")\nprint(df.shape)\nprint(df.head())\n\n\n\n── df_model (used for modeling + most EDA) ──\n(1893958, 20)\nstart_hour                  datetime64[us]\nstart_station_id                       str\nstart_station_name                     str\nstart_lat                          float64\nstart_lng                          float64\nride_count                           int64\narrivals                             int64\ntotal_traffic                        int64\navg_duration_min                   float64\nntaname                                str\nboroname                               str\nDATE                        datetime64[us]\nHourlyDryBulbTemperature           float64\nHourlyPrecipitation                float64\nHourlyWindSpeed                    float64\nhour_of_day                          int32\nday_of_week                          int32\nmonth                                int32\nis_weekend                           int64\nis_rush_hour                         int64\ndtype: object\nstart_hour                     0\nstart_station_id               0\nstart_station_name             0\nstart_lat                      0\nstart_lng                      0\nride_count                     0\narrivals                       0\ntotal_traffic                  0\navg_duration_min               0\nntaname                        0\nboroname                       0\nDATE                        1502\nHourlyDryBulbTemperature    3490\nHourlyPrecipitation            0\nHourlyWindSpeed                0\nhour_of_day                    0\nday_of_week                    0\nmonth                          0\nis_weekend                     0\nis_rush_hour                   0\ndtype: int64\n                       start_hour     start_lat     start_lng    ride_count  \\\ncount                     1893958  1.893958e+06  1.893958e+06  1.893958e+06   \nmean   2024-05-15 21:55:14.187115  4.073949e+01 -7.395968e+01  3.048675e+00   \nmin           2024-04-01 00:00:00  4.063338e+01 -7.407106e+01  1.000000e+00   \n25%           2024-04-23 12:00:00  4.070167e+01 -7.398752e+01  1.000000e+00   \n50%           2024-05-15 14:00:00  4.073544e+01 -7.396316e+01  2.000000e+00   \n75%           2024-06-07 09:00:00  4.076767e+01 -7.393641e+01  4.000000e+00   \nmax           2024-06-30 23:00:00  4.088630e+01 -7.384672e+01  8.300000e+01   \nstd                           NaN  5.078752e-02  3.411769e-02  3.297049e+00   \n\n           arrivals  total_traffic  avg_duration_min  \\\ncount  1.893958e+06   1.893958e+06      1.893958e+06   \nmean   4.296156e+00   7.344831e+00      1.325942e+01   \nmin    0.000000e+00   1.000000e+00      1.002100e+00   \n25%    0.000000e+00   1.000000e+00      6.529794e+00   \n50%    0.000000e+00   3.000000e+00      1.031778e+01   \n75%    4.000000e+00   8.000000e+00      1.578089e+01   \nmax    2.500000e+02   3.090000e+02      1.437528e+03   \nstd    9.606297e+00   1.174319e+01      1.747202e+01   \n\n                             DATE  HourlyDryBulbTemperature  \\\ncount                     1892456              1.890468e+06   \nmean   2024-05-15 22:11:28.278935              6.592976e+01   \nmin           2024-04-01 00:00:00              3.700000e+01   \n25%           2024-04-23 12:00:00              5.700000e+01   \n50%           2024-05-15 15:00:00              6.700000e+01   \n75%           2024-06-07 10:00:00              7.500000e+01   \nmax           2024-06-30 23:00:00              9.300000e+01   \nstd                           NaN              1.137510e+01   \n\n       HourlyPrecipitation  HourlyWindSpeed   hour_of_day   day_of_week  \\\ncount         1.893958e+06     1.893958e+06  1.893958e+06  1.893958e+06   \nmean          1.823546e-03     4.790189e+00  1.351341e+01  2.973247e+00   \nmin           0.000000e+00     0.000000e+00  0.000000e+00  0.000000e+00   \n25%           0.000000e+00     3.000000e+00  9.000000e+00  1.000000e+00   \n50%           0.000000e+00     5.000000e+00  1.400000e+01  3.000000e+00   \n75%           0.000000e+00     7.000000e+00  1.800000e+01  5.000000e+00   \nmax           5.600000e-01     2.900000e+01  2.300000e+01  6.000000e+00   \nstd           1.730785e-02     3.343479e+00  5.758814e+00  1.979552e+00   \n\n              month    is_weekend  is_rush_hour  \ncount  1.893958e+06  1.893958e+06  1.893958e+06  \nmean   4.992520e+00  2.757606e-01  3.929227e-01  \nmin    4.000000e+00  0.000000e+00  0.000000e+00  \n25%    4.000000e+00  0.000000e+00  0.000000e+00  \n50%    5.000000e+00  0.000000e+00  0.000000e+00  \n75%    6.000000e+00  1.000000e+00  1.000000e+00  \nmax    6.000000e+00  1.000000e+00  1.000000e+00  \nstd    8.095207e-01  4.468969e-01  4.884000e-01  \n\n── df (rideable_type split, used for bike type EDA) ──\n(2580089, 12)\n  start_hour start_station_id         start_station_name  start_lat  \\\n0 2024-04-01          2883.03         3 Ave & Wakeman Pl  40.638246   \n1 2024-04-01          3046.03        E 3 St & Church Ave  40.643817   \n2 2024-04-01          3056.05             12 Ave & 36 St  40.643546   \n3 2024-04-01          3169.07              53 St & 4 Ave  40.644862   \n4 2024-04-01          3172.01  Tilden Ave & Nostrand Ave  40.646830   \n\n   start_lng  rideable_type  departures  avg_duration_min  arrivals  \\\n0 -74.024714  electric_bike           2          8.777042         0   \n1 -73.977433  electric_bike           1          5.181850         0   \n2 -73.986418  electric_bike           2         17.163958         0   \n3 -74.014531  electric_bike           1          2.992950         0   \n4 -73.949330  electric_bike           1         14.203033         0   \n\n   total_traffic                ntaname  boroname  \n0              2     Sunset Park (West)  Brooklyn  \n1              1             Kensington  Brooklyn  \n2              2             Kensington  Brooklyn  \n3              1     Sunset Park (West)  Brooklyn  \n4              1  East Flatbush-Erasmus  Brooklyn",
+    "crumbs": [
+      "Pipeline & Setup"
+    ]
+  },
+  {
+    "objectID": "notebooks/01_setup.html#data-saving",
+    "href": "notebooks/01_setup.html#data-saving",
+    "title": "1: Setup and Initial Data Processing",
+    "section": "1.5: Data Saving",
+    "text": "1.5: Data Saving\nSave all the relevant dataframes to csv files. Outputs should be\n\ndata/processed/hourly_merged.csv - one row per station per hour\ndata/processed/station_lookup.csv - each individual station with spatial attributes\ndata/processed/hourly_by_rideable_type.csv - same as hourly_merged, split by classic vs electric bike type\n\n\n\nCode\n# save main working dataset\ndf_model.to_csv('../data/processed/hourly_merged.csv', index=False)\n\n# save rideable type split for classic vs electric bike explorations\ndf.to_csv('../data/processed/hourly_by_rideable_type.csv', index=False)\n\n# save station/geo-spatial data\nstation_lookup = (df_model[['start_station_id','start_station_name',\n                         'start_lat','start_lng','ntaname','boroname']]\n                    .drop_duplicates()\n                    .merge(stations_school[['start_station_id', 'dist_to_nearest_school_m', 'near_school']],\n                         on='start_station_id', how='left'))\nstation_lookup.to_csv('../data/processed/station_lookup.csv', index=False)",
+    "crumbs": [
+      "Pipeline & Setup"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html",
+    "href": "notebooks/03_modeling.html",
+    "title": "3: Modeling",
+    "section": "",
+    "text": "Build and evaluate models to predict hourly CitiBike departures per station. Four models compares against a mean-prediction baseline using a chronological train/test split of April and May for training, June for testing\nCode\nimport pandas as pd\nimport numpy as np\nimport matplotlib.pyplot as plt\nimport matplotlib.colors as mcolors\nimport seaborn as sns\nimport geopandas as gpd\nfrom sklearn.linear_model import LinearRegression, Ridge, Lasso\nfrom sklearn.ensemble import RandomForestRegressor\nfrom sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error\nimport warnings\nwarnings.filterwarnings('ignore')",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#setup",
+    "href": "notebooks/03_modeling.html#setup",
+    "title": "3: Modeling",
+    "section": "3.1: Setup",
+    "text": "3.1: Setup\n\n\nCode\n# dtype forced on start_station_id: hourly_merged.csv is large enough that pandas\n# infers types per chunk, parsing some ids as float and others as str. That silently\n# breaks the merge against station_lookup and drops every unmatched row.\ndf_model = pd.read_csv('../data/processed/hourly_merged.csv', parse_dates=['start_hour'],\n                    dtype={'start_station_id': str})\nstation_lookup = pd.read_csv('../data/processed/station_lookup.csv',\n                    dtype={'start_station_id': str})\n\nCOLORS = {\n    'primary': '#2563EB',\n    'secondary': '#F59E0B', \n    'accent': '#10B981',\n    'muted': '#94A3B8'\n}",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#feature-engineering",
+    "href": "notebooks/03_modeling.html#feature-engineering",
+    "title": "3: Modeling",
+    "section": "3.2: Feature Engineering",
+    "text": "3.2: Feature Engineering\n16 features constructed for modeling: - Time Features: hour of day, day of week, month, is_weekend, is_rush_hour - Cyclical Encodings: sine-cosine encoding of hour and day of week to correct wraparound problem where hour 23/0, day 6/0 are numerically adjacent but temporally adjacent - Weather: temperature, precipitation, wind speed - Geographic: borough membership (one-hot encoded) - School Proximity: binary flag from station lookup\n\n\nCode\ndf = df_model.merge(\n     station_lookup[['start_station_id', 'near_school']],\n     on='start_station_id', how='left'\n)\n\n# one hot encode\ndf = pd.get_dummies(df, columns=['boroname'], prefix='boro', drop_first=True)\n\n# cyclical encode for periodic data\ndf['hour_sin'] = np.sin(2 * np.pi * df['hour_of_day'] / 24)\ndf['hour_cos'] = np.cos(2 * np.pi * df['hour_of_day'] / 24)\ndf['dow_sin'] = np.sin(2 * np.pi * df['day_of_week'] / 7)\ndf['dow_cos'] = np.cos(2 * np.pi * df['day_of_week'] / 7)\n\n# define feature columns\nboro_cols = [c for c in df.columns if c.startswith('boro_')]\n\nfeature_cols = [\n     'hour_of_day', 'day_of_week', 'month', 'is_weekend', 'is_rush_hour',\n     'hour_sin', 'hour_cos', 'dow_sin', 'dow_cos', 'HourlyDryBulbTemperature',\n     'HourlyPrecipitation', 'HourlyWindSpeed', 'near_school'\n] + boro_cols\n\ntarget_col = 'ride_count'\n\n# drop nulls in features\ndf_clean = df[feature_cols + [target_col, 'start_hour', 'start_station_id', 'ntaname']].dropna()\ndf_clean[boro_cols] = df[boro_cols].astype(int)\n\nprint(f\"Modeling dataset shape: {df_clean.shape}\")\nprint(f\"Features: {len(feature_cols)}\")\nprint([c for c in df.columns if c.startswith('boro_')])\n\n\nModeling dataset shape: (1894236, 20)\nFeatures: 16\n['boro_Brooklyn', 'boro_Manhattan', 'boro_Queens']",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#chronological-traintest-split",
+    "href": "notebooks/03_modeling.html#chronological-traintest-split",
+    "title": "3: Modeling",
+    "section": "3.3: Chronological Train/Test Split",
+    "text": "3.3: Chronological Train/Test Split\nSplit on April-May (1.18M rows), test on June (582K rows). Train mean ridership is slightly higher than test mean, reflecting the previous observation of June ridership counts flattening.\n\n\nCode\ntrain = df_clean[df_clean['start_hour'] &lt; '2024-06-01']\ntest = df_clean[df_clean['start_hour'] &gt;= '2024-06-01']\n\nX_train = train[feature_cols]\ny_train = train[target_col]\nX_test = test[feature_cols]\ny_test = test[target_col]\n\nprint(f\"Train size: {len(train):,} rows ({train['start_hour'].min().date()} to {train['start_hour'].max().date()})\")\nprint(f\"Test size: {len(test):,} rows ({test['start_hour'].min().date()} to {test['start_hour'].max().date()})\")\nprint(f\"Train mean ride_count: {y_train.mean():.3f}\")\nprint(f\"Test mean ride_count: {y_test.mean():.3f}\")\n\n\nTrain size: 1,281,180 rows (2024-04-01 to 2024-05-31)\nTest size: 613,056 rows (2024-06-01 to 2024-06-30)\nTrain mean ride_count: 3.118\nTest mean ride_count: 2.898",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#baseline-model",
+    "href": "notebooks/03_modeling.html#baseline-model",
+    "title": "3: Modeling",
+    "section": "3.4: Baseline Model",
+    "text": "3.4: Baseline Model\nPredicts the mean ride count for every observation as a baseline for model performance down the line\n\n\nCode\nbaseline_pred = np.full(len(y_test), y_train.mean())\nbaseline_rmse = np.sqrt(mean_squared_error(y_test, baseline_pred))\nbaseline_r2 = r2_score(y_test, baseline_pred)\nbaseline_mae = mean_absolute_error(y_test, baseline_pred)\n\nprint(f\"Baseline (mean prediction):\")\nprint(f\"RMSE: {baseline_rmse:.4f}\")\nprint(f\"R2: {baseline_r2:.4f}\")\nprint(f\"MAE: {baseline_mae:.4f}\")\n\n\nBaseline (mean prediction):\nRMSE: 2.9935\nR2: -0.0054\nMAE: 2.0798",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#model-training-and-evaluation",
+    "href": "notebooks/03_modeling.html#model-training-and-evaluation",
+    "title": "3: Modeling",
+    "section": "3.5: Model Training and Evaluation",
+    "text": "3.5: Model Training and Evaluation\nFour models evaluated: Linear Regression, Ridge, LASSO, and Random Forest. Random Forest achieves the best performance, with 10.5% RMSE improvement over baseline. R2 = 0.19 reflects noise in hourly station-level ridership data. Individual features show weak pairwise correlations with ride_count, consisent once again with demand being driven by a combination of factors\n\n\nCode\n# main worker function for model evaluations\ndef eval_model(name, model, X_train, y_train, X_test, y_test):\n    model.fit(X_train, y_train)\n    preds = model.predict(X_test)\n    rmse = np.sqrt(mean_squared_error(y_test, preds))\n    r2 = r2_score(y_test, preds)\n    mae = mean_absolute_error(y_test, preds)\n    print(f\"{name:25s} RMSE: {rmse:.4f} R2: {r2:.4f} MAE: {mae:.4f}\")\n    return model, preds, {'name': name, 'rmse': rmse, 'r2': r2, 'mae': mae}\n\nmodels = {}\npredictions = {}\nresults = []\n\n# linear regression\nlr, lr_preds, lr_stats = eval_model(\n    'Linear Regression',\n    LinearRegression(),\n    X_train, y_train, X_test, y_test\n)\nmodels['Linear Regression'] = lr\npredictions['Linear Regression'] = lr_preds\nresults.append(lr_stats)\n\n# ridge\nridge, ridge_preds, ridge_stats = eval_model(\n    'Ridge Regression',\n    Ridge(alpha=1.0),\n    X_train, y_train, X_test, y_test\n)\nmodels['Ridge Regression'] = ridge\npredictions['Ridge Regression'] = ridge_preds\nresults.append(ridge_stats)\n\n# lasso\nlasso, lasso_preds, lasso_stats = eval_model(\n    'Lasso Regression',\n    Lasso(alpha=0.01),\n    X_train, y_train, X_test, y_test\n)\nmodels['Lasso Regression'] = lasso\npredictions['Lasso Regression'] = lasso_preds\nresults.append(lasso_stats)\n\n# random forest\n# max_depth of 10 to prevent overfitting on noisy hourly data\nrf, rf_preds, rf_stats = eval_model(\n    'Random Forest',\n    RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42, n_jobs=-1),\n    X_train, y_train, X_test, y_test\n)\nmodels['Random Forest'] = rf\npredictions['Random Forest'] = rf_preds\nresults.append(rf_stats)\n\n# add baseline to results to compare\nresults.insert(0, {'name': 'Baseline (mean)',\n                'rmse': baseline_rmse,\n                'r2': baseline_r2,\n                'mae': baseline_mae})\n\nresults_df = pd.DataFrame(results)\nprint(f\"Model Comparison:\\n{results_df.to_string(index=False)}\")\n\n\nLinear Regression         RMSE: 2.7466 R2: 0.1536 MAE: 1.8367\nRidge Regression          RMSE: 2.7466 R2: 0.1536 MAE: 1.8367\nLasso Regression          RMSE: 2.7449 R2: 0.1546 MAE: 1.8414\nRandom Forest             RMSE: 2.6835 R2: 0.1920 MAE: 1.7487\nModel Comparison:\n             name     rmse        r2      mae\n  Baseline (mean) 2.993466 -0.005437 2.079834\nLinear Regression 2.746609  0.153553 1.836705\n Ridge Regression 2.746608  0.153553 1.836701\n Lasso Regression 2.744948  0.154576 1.841405\n    Random Forest 2.683494  0.192007 1.748739",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#model-comparison-plot",
+    "href": "notebooks/03_modeling.html#model-comparison-plot",
+    "title": "3: Modeling",
+    "section": "3.6: Model Comparison Plot",
+    "text": "3.6: Model Comparison Plot\nComparison of model performance. The three linear models share similar values across all three metrics, showing that regularization doesn’t help much in this instance. Random forest does noticeably better than the other three models, and shows decent improvement over baseline\n\n\nCode\nfig, axes = plt.subplots(1, 3, figsize=(14, 5))\n\nmetrics = ['rmse', 'r2', 'mae']\ntitles = ['RMSE (lower = better)', 'R2 (higher = better)', 'MAE (lower = better)']\ncolors = [COLORS['secondary'] if r['name'] == 'Baseline (mean)' else COLORS['primary'] for _, r in results_df.iterrows()]\n\nfor ax, metric, title in zip(axes, metrics, titles):\n    bars = ax.bar(results_df['name'], results_df[metric], color=colors, edgecolor='white')\n    ax.set_title(title, fontsize=11)\n    ax.set_xticklabels(results_df['name'], rotation=20, ha='right', fontsize=8)\n    for bar, val in zip(bars, results_df[metric]):\n        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.001,\n            f\"{val:.3f}\", ha='center', va='bottom', fontsize=8)\n\nplt.suptitle('Model Performance Comparison', fontsize=14, y=1.02)\nplt.tight_layout()\nplt.savefig('../figures/model/model_comparison.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#predicted-vs-actual",
+    "href": "notebooks/03_modeling.html#predicted-vs-actual",
+    "title": "3: Modeling",
+    "section": "3.7: Predicted vs Actual",
+    "text": "3.7: Predicted vs Actual\nActual vs predicted ridership compared across demand bins. Model handles low and moderate demand well but underpredicts high-demand periods. At actual ridership of 20-25 rides per hour, the model predicts less than 10. Peak demand events vary on a month to month basis, which might be the cause of underprediction in the model’s results.\n\n\nCode\nbest_preds = rf_preds\ntest_with_preds = test.copy()\ntest_with_preds['predicted'] = best_preds\n\n# Represent the average actual vs predicted ride count at specific interval\nbins = [0, 2, 4, 6, 8, 10, 15, 20, 25]\ntest_with_preds['actual_bin'] = pd.cut(test_with_preds['ride_count'], bins=bins)\n\nbinned = (test_with_preds.groupby('actual_bin', observed=True)\n        .agg(mean_actual=('ride_count', 'mean'),\n            mean_predicted=('predicted', 'mean'),\n            count=('ride_count', 'count'))\n        .reset_index())\n\nfig, ax = plt.subplots(figsize=(10, 6))\nx = range(len(binned))\nwidth = 0.35\n\nax.bar([i - width/2 for i in x], binned['mean_actual'], width, label='Actual', color=COLORS['primary'], alpha=0.8)\nax.bar([i + width/2 for i in x], binned['mean_predicted'], width, label='Predicted', color=COLORS['secondary'], alpha=0.8)\nax.set_xticks(x)\nax.set_xticklabels([str(b) for b in binned['actual_bin']], rotation=30)\nax.set_xlabel('Actual Ride Count Range')\nax.set_ylabel('Mean Ride Count')\nax.set_title('Actual vs Predicted Ridership by Demand Level\\nRandom Forest', fontsize=13, pad=12)\n\nax.legend()\nplt.tight_layout()\nplt.savefig('../figures/model/predicted_vs_actual.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#residuals-over-time",
+    "href": "notebooks/03_modeling.html#residuals-over-time",
+    "title": "3: Modeling",
+    "section": "3.8: Residuals Over Time",
+    "text": "3.8: Residuals Over Time\nDaily mean residuals across the June test period. Residuals drift negative past the midpoint of June, where the model increasingly overpredicts as the month progresses. In-line with late-June temperatures reaching into the high-80s, exceeding the training data range. The model overpredicts when the ridership plateaus in June, as seen in the time series from the EDA section. A printout of the weather pattern in the second half of June explains this phenomenon perfectly\n\n\nCode\ntest_with_preds['residual'] = y_test.values - best_preds\n\ndaily_residuals = (test_with_preds.groupby(test_with_preds['start_hour'].dt.date)\n        ['residual'].mean().reset_index())\ndaily_residuals.columns = ['date', 'mean_residual']\ndaily_residuals['date'] = pd.to_datetime(daily_residuals['date'])\n\nfig, ax = plt.subplots(figsize=(12, 4))\nax.plot(daily_residuals['date'], daily_residuals['mean_residual'], \n    color=COLORS['primary'], linewidth=1.5)\nax.axhline(0, color=COLORS['secondary'], linestyle='--', linewidth=1.5, label='Zero residual')\nax.fill_between(daily_residuals['date'], daily_residuals['mean_residual'], alpha=0.15, color=COLORS['primary'])\nax.set_title('Daily Mean Residuals over Test Period (June 2024)', fontsize=13, pad=12)\nax.set_xlabel('Date')\nax.set_ylabel('Mean Residual (Actual - Predicted)')\n\nax.legend()\nplt.tight_layout()\nplt.savefig('../figures/model/residuals_over_time.png', bbox_inches='tight')\nplt.show()\n\n# printout of weather data for the latter half of june\nprint(df_model[df_model['start_hour'].dt.month == 6]\n    .groupby(df_model['start_hour'].dt.date)\n    ['HourlyDryBulbTemperature'].mean()\n    .tail(20))\n\n\n\n\n\n\n\n\n\nstart_hour\n2024-06-11    68.099100\n2024-06-12    70.033577\n2024-06-13    76.260801\n2024-06-14    75.310150\n2024-06-15    74.764126\n2024-06-16    69.479150\n2024-06-17    76.756655\n2024-06-18    79.955870\n2024-06-19    79.821233\n2024-06-20    83.145586\n2024-06-21    84.615985\n2024-06-22    81.493350\n2024-06-23    84.861088\n2024-06-24    75.383776\n2024-06-25    82.617880\n2024-06-26    82.563354\n2024-06-27    76.609019\n2024-06-28    70.680621\n2024-06-29    74.409237\n2024-06-30    76.828821\nName: HourlyDryBulbTemperature, dtype: float64",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#feature-importance",
+    "href": "notebooks/03_modeling.html#feature-importance",
+    "title": "3: Modeling",
+    "section": "3.9: Feature Importance",
+    "text": "3.9: Feature Importance\nRandom Forest feature importance reveals the borough of Manhattan and cyclical hour encoding as two dominant predictors, accounting for almost 75% of total feature importance. Other features have their prominence, but not as strongly as the aforementioned two\n\n\nCode\nimportance_df = pd.DataFrame({\n    'feature': feature_cols,\n    'importance': rf.feature_importances_\n}).sort_values('importance', ascending=True)\n\nimportance_df['display_name'] = importance_df['feature'].map({\n    'hour_sin': 'Hour (cyclical)',\n    'hour_cos': 'Hour (cyclical)',\n    'dow_sin': 'Day of Week (cyclical)',\n    'dow_cos': 'Day of Week (cyclical)',\n    'hour_of_day': 'Hour of Day',\n    'day_of_week': 'Day of Week',\n    'month': 'Month',\n    'is_weekend': 'Is Weekend',\n    'is_rush_hour': 'Is Rush Hour',\n    'HourlyDryBulbTemperature': 'Temperature',\n    'HourlyPrecipitation': 'Precipitation',\n    'HourlyWindSpeed': 'Wind Speed',\n    'near_school': 'Near School'\n}).fillna(importance_df['feature'])\n\n# aggregate cyclical pairs\nimportance_grouped = (importance_df.groupby('display_name')['importance']\n                        .sum()\n                        .sort_values(ascending=True)\n                        .reset_index())\n\nfig, ax = plt.subplots(figsize=(10, 7))\ncolors_imp = [COLORS['secondary'] if imp &gt; importance_grouped['importance'].median()\n            else COLORS['primary'] for imp in importance_grouped['importance']]\nax.barh(importance_grouped['display_name'], importance_grouped['importance'],\n        color=colors_imp, edgecolor='white')\nax.set_title('Feature Importance (Random Forest)', fontsize=13, pad=12)\nax.set_xlabel('Importance Score')\n\nplt.tight_layout()\nplt.savefig('../figures/model/feature_importance.png', bbox_inches='tight')\nplt.show()",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#spatial-residual-analysis",
+    "href": "notebooks/03_modeling.html#spatial-residual-analysis",
+    "title": "3: Modeling",
+    "section": "3.10: Spatial Residual Analysis",
+    "text": "3.10: Spatial Residual Analysis\nPrediction errors mapped geographically (overprediction and underprediction) concentrate the largest errors along the most traffic-dense areas in Manhattan. Reinforces the idea of the model poorly handling stations with higher-than-normal ridership counts, in comparison to low-variance outer stations, which are almost all white in the graphs.\n\n\nCode\nstation_residuals = (test_with_preds.groupby('start_station_id')\n                        .agg(mean_residual=('residual', 'mean'),\n                            abs_residual=('residual', lambda x: x.abs().mean()),\n                            actual_mean=('ride_count', 'mean'),\n                            predicted_mean=('predicted', 'mean'))\n                        .reset_index())\n\n# merge with station coordinates & build geodataframe\nstation_residuals = station_residuals.merge(\n    station_lookup[['start_station_id', 'start_lat', 'start_lng', 'ntaname', 'boroname']],\n    on='start_station_id', how='left'\n)\nresiduals_geo = gpd.GeoDataFrame(\n    station_residuals,\n    geometry=gpd.points_from_xy(station_residuals['start_lng'], station_residuals['start_lat']),\n    crs='EPSG:4326'\n)\nnta = gpd.read_file('../data/raw/spatial/nta.shp').to_crs('EPSG:4326')\n\nfig, axes = plt.subplots(1, 2, figsize=(16, 12))\n\n# plot left: mean residual per station (over vs under prediction)\nnta.plot(ax=axes[0], color='#1a1a2e', edgecolor=\"#858585\", linewidth=0.3)\ndivnorm = mcolors.TwoSlopeNorm(vmin=station_residuals['mean_residual'].min(), vcenter=0,\n                            vmax=station_residuals['mean_residual'].max())\n\nscatter0 = axes[0].scatter(\n    residuals_geo['start_lng'],\n    residuals_geo['start_lat'],\n    c=residuals_geo['mean_residual'],\n    cmap='RdBu',\n    norm=divnorm,\n    s=20, alpha=0.8, edgecolors='none'\n)\nplt.colorbar(scatter0, ax=axes[0], label='Mean Residual (Actual - Predicted)', shrink=0.6)\naxes[0].set_title('Prediction Bias by Station\\n(blue = underpredicted, red = overpredicted)',\n                fontsize=11, pad=10)\naxes[0].set_xlim(-74.08, -73.84)\naxes[0].set_ylim(40.62, 40.90)\n\n# plot right: absolute error per station (where model is least accurate)\nnta.plot(ax=axes[1], color='#1a1a2e', edgecolor='#858585', linewidth=0.3)\nscatter1 = axes[1].scatter(\n    residuals_geo['start_lng'],\n    residuals_geo['start_lat'],\n    c=residuals_geo['abs_residual'],\n    cmap='YlOrRd',\n    s=20, alpha=0.8, edgecolors='none'\n)\nplt.colorbar(scatter1, ax=axes[1], label='Mean Absolute Error', shrink=0.6)\naxes[1].set_title('Prediction Error Magnitude by Station\\n(darker = larger error)',\n                fontsize=11, pad=10)\naxes[1].set_xlim(-74.08, -73.84)\naxes[1].set_ylim(40.62, 40.90)\n\nplt.suptitle('Spatial Distribution of Model Prediction Error', fontsize=14, y=1.01)\nplt.tight_layout()\nplt.savefig('../figures/model/spatial_residuals.png', bbox_inches='tight')\nplt.show()\n\n\n\n\n\n\n\n\n\nWe can look at the data a little closer and summarize the results by borough to see which boroughs the model handles best:\n\n\nCode\nprint(\"Model Performance by Borough:\")\nborough_perf = (test_with_preds.merge(\n        station_lookup[['start_station_id', 'boroname']],\n        on='start_station_id', how='left')\n    .groupby('boroname')\n    .apply(lambda x: pd.Series({\n        'rmse': np.sqrt(mean_squared_error(x['ride_count'], x['predicted'])),\n        'r2': r2_score(x['ride_count'], x['predicted']),\n        'mean_actual': x['ride_count'].mean()\n    }))\n    .round(3)\n)\nprint(borough_perf)\n\n\nModel Performance by Borough:\n            rmse     r2  mean_actual\nboroname                            \nBronx      0.734  0.008        1.334\nBrooklyn   1.915  0.051        2.309\nManhattan  3.478  0.107        3.851\nQueens     1.140  0.027        1.592",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  },
+  {
+    "objectID": "notebooks/03_modeling.html#rush-hour-model-performance",
+    "href": "notebooks/03_modeling.html#rush-hour-model-performance",
+    "title": "3: Modeling",
+    "section": "3.11: Rush Hour Model Performance",
+    "text": "3.11: Rush Hour Model Performance\nSome additional analysis on model performance during vs outside of rush hour. Otherwise similar, but likely offset slightly due to peak ridership periods during rush hour\n\n\nCode\nrush_test = test_with_preds[test_with_preds['is_rush_hour'] == 1]\nnonrush_test = test_with_preds[test_with_preds['is_rush_hour'] == 0]\n\nrush_r2 = r2_score(rush_test['ride_count'], rush_test['predicted'])\nnonrush_r2 = r2_score(nonrush_test['ride_count'], nonrush_test['predicted'])\nrush_rmse = np.sqrt(mean_squared_error(rush_test['ride_count'], rush_test['predicted']))\nnonrush_rmse = np.sqrt(mean_squared_error(nonrush_test['ride_count'], nonrush_test['predicted']))\n\nprint(f\"Rush hour model performance:\")\nprint(f\"Rush hour R2: {rush_r2:.3f}, RMSE: {rush_rmse:.3f}\")\nprint(f\"Non-rush hour R2: {nonrush_r2:.3f}, RMSE: {nonrush_rmse:.3f}\")\n\n\nRush hour model performance:\nRush hour R2: 0.178, RMSE: 3.296\nNon-rush hour R2: 0.168, RMSE: 2.214\n\n\nTo summarize the results we got in this section:\n\n\nCode\nprint(\"Model Summary (Best Model = Random Forest):\")\nprint(f\"Train size: {len(train):,} rows\")\nprint(f\"Test size: {len(test):,} rows\")\nprint(f\"Number of features: {len(feature_cols)}\\n\")\nprint(f\"Test R2: {rf_stats['r2']:.3f}\")\nprint(f\"Test RMSE: {rf_stats['rmse']:.3f} rides per station per hour\")\nprint(f\"Test MAE: {rf_stats['mae']:.3f} rides per station per hour\")\nprint(f\"Improvement over baseline RMSE: {((baseline_rmse - rf_stats['rmse'])/baseline_rmse*100):.2f}%\")\n\n\nModel Summary (Best Model = Random Forest):\nTrain size: 1,281,180 rows\nTest size: 613,056 rows\nNumber of features: 16\n\nTest R2: 0.192\nTest RMSE: 2.683 rides per station per hour\nTest MAE: 1.749 rides per station per hour\nImprovement over baseline RMSE: 10.35%",
+    "crumbs": [
+      "Predictive Modeling"
+    ]
+  }
+]
