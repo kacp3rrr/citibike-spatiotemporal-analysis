@@ -1,5 +1,7 @@
 # CitiBike Spatiotemporal Ridership Analysis
 
+### [View Website](https://kacp3rrr.github.io/citibike-spatiotemporal-analysis/)
+
 Analysis and prediction of NYC CitiBike ridership patterns using historical trip data, weather observations, and geospatial neighborhood data across April-June 2024
 
 This project aggregates ~5 million individual trips into hourly station-level counts, merged with weather and spatial data. This dataset is then analyzed and used to build predictive models to understand what drives ridership demand.
